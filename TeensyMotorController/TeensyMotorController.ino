@@ -184,11 +184,15 @@ void loop() {
   float rudder_error = current_rudder_angle - desired_rudder_angle;
 
   if (abs(rudder_error) > ACCEPTABLE_RUDDER_ERROR) {
-    if (((int)rudder_error % 360) > 0 && ((int)rudder_error % 360) < 180) 
+    if (((int)rudder_error % 360) > 0 && ((int)rudder_error % 360) < 180) {
       rudder_stepper_driver.setDirection(COUNTER_CLOCKWISE);
+      rudder_direction = COUNTER_CLOCKWISE;
+    }
     
-    else 
+    else {
       rudder_stepper_driver.setDirection(CLOCKWISE);
+      rudder_direction = CLOCKWISE;
+    }
 
     // number of steps is some linear function that maps the error of the rudder to a number of steps we want to take per loop.
     // This ends up cooresponding to the speed of the rudder. The higher the rudder_error, the higher the speed of the rudder will be
@@ -196,18 +200,26 @@ void loop() {
     for (int i = 0; i < number_of_steps; i++) {
       rudder_stepper_driver.step();
       delayMicroseconds(STEP_PERIOD_US);
+
+      if (rudder_direction == CLOCKWISE) current_rudder_angle += STEP_SIZE_DEGREES;
+      if (rudder_direction == COUNTER_CLOCKWISE) current_rudder_angle -= STEP_SIZE_DEGREES;
     }
   }
 
 
   float mast_error = current_mast_angle - desired_mast_angle;
+  int rudder_direction;
 
   if (abs(mast_error) > ACCEPTABLE_MAST_ERROR) {
-    if (((int)mast_error % 360) > 0 && ((int)mast_error % 360) < 180) 
+    if (((int)mast_error % 360) > 0 && ((int)mast_error % 360) < 180) {
       mast_stepper_driver.setDirection(COUNTER_CLOCKWISE);
+      rudder_direction = COUNTER_CLOCKWISE;
+    }
     
-    else 
+    else {
       mast_stepper_driver.setDirection(CLOCKWISE);
+      rudder_direction = CLOCKWISE;
+    }
 
     // number of steps is some linear function that maps the error of the rudder to a number of steps we want to take per loop.
     // This ends up cooresponding to the speed of the rudder. The higher the rudder_error, the higher the speed of the rudder will be
@@ -215,6 +227,9 @@ void loop() {
     for (int i = 0; i < number_of_steps; i++) {
       mast_stepper_driver.step();
       delayMicroseconds(STEP_PERIOD_US);
+
+      if (rudder_direction == CLOCKWISE) current_rudder_angle += STEP_SIZE_DEGREES;
+      if (rudder_direction == COUNTER_CLOCKWISE) current_rudder_angle -= STEP_SIZE_DEGREES;
     }
   }
 }
