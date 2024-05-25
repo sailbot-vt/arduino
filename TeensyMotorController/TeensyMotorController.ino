@@ -1,6 +1,6 @@
 #include <SPI.h>
 #include <HighPowerStepperDriver.h>
-#include <AMT22_Encoder.h>
+// #include <AMT22_Encoder.h>
 
 #define RUDDER_MOTOR_SLEEP_PIN 0
 #define RUDDER_MOTOR_CHIP_SELECT_PIN 1 
@@ -19,7 +19,7 @@
 // This is measured in number of steps before you check the encoder and jetson serial values. Encoder and jetson serial have inherent delay. 
 // So the more steps you do before you check the encoder and jetson serial, the faster you go, but the harder it is to control
 // very similar to p controller gain (Kp)
-#define RUDDER_GAIN 50
+#define RUDDER_GAIN 100
 #define MAST_GAIN 50
 
 #define MAX_RUDDER_ANGLE 20
@@ -27,15 +27,17 @@
 #define MAX_MAST_ANGLE 20
 #define MIN_MAST_ANGLE -20
 
-#define INVERTED_CONTROLS true
-#define RUDDER_ANGLE_OFFSET 36
-#define MAST_ANGLE_OFFSET 0
+// #define INVERTED_CONTROLS true
+// #define RUDDER_ANGLE_OFFSET 36
+// #define MAST_ANGLE_OFFSET 0
 
 const float MID_RUDDER_ANGLE = (MAX_RUDDER_ANGLE + MIN_RUDDER_ANGLE) / 2;
 const float MID_MAST_ANGLE = (MAX_MAST_ANGLE + MIN_MAST_ANGLE) / 2;
 
 const int MAX_RUDDER_ERROR = (MAX_RUDDER_ANGLE - MIN_RUDDER_ANGLE);
 const int MAX_MAST_ERROR = (MAX_MAST_ANGLE - MIN_RUDDER_ANGLE);
+
+const float STEP_SIZE_DEGREES = 0.03277494537; // (1.8/(4 * 13.73));
 
 #define ACCEPTABLE_RUDDER_ERROR 1   // in degrees
 #define ACCEPTABLE_MAST_ERROR 1     // in degrees
@@ -52,6 +54,10 @@ HighPowerStepperDriver mast_stepper_driver;
 AMT22_Encoder* rudder_encoder;
 AMT22_Encoder* mast_encoder;
 
+float current_rudder_angle = 0; 
+float current_mast_angle = 0;
+
+float desired_mast_angle = 0; 
 float desired_rudder_angle = 0;
 
 
@@ -145,8 +151,6 @@ char *str_replace(char *orig, char *rep, char *with) {
 // Main Control Loop --------------------------------------------------------------------------------------------------------------------------------------------
 
 void loop() {
-
-  float desired_mast_angle = 0; float desired_rudder_angle = 0;
   size_t incoming_message_buffer_size = 1000;
   char incoming_message_buffer[incoming_message_buffer_size];
   
@@ -160,12 +164,12 @@ void loop() {
 
     char* mast_angle_message = strtok(message, ";");
     mast_angle_message = str_replace(mast_angle_message, (char*)"mast angle: ", NULL);
-    desired_mast_angle = atof(mast_angle_message);
+    desired_mast_angle = fmod(atof(mast_angle_message), 360);
     free(mast_angle_message);
 
     char* rudder_angle_message = strtok(NULL, ";");
     rudder_angle_message = str_replace(rudder_angle_message, (char*)"rudder angle: ", NULL);
-    desired_rudder_angle = atof(rudder_angle_message);
+    desired_rudder_angle = fmod(atof(rudder_angle_message), 360);
     free(rudder_angle_message);
 
     Serial.print("Setting Mast Angle To: ");
@@ -176,8 +180,8 @@ void loop() {
 
 
   // Get Encoder Values (current positions of the motors)
-  float current_rudder_angle = rudder_encoder->get_motor_angle();
-  float current_mast_angle = mast_encoder->get_motor_angle();
+  current_rudder_angle = rudder_encoder->get_motor_angle();
+  // current_mast_angle = mast_encoder->get_motor_angle();
 
 
   // Closed Feedback Loop
@@ -186,12 +190,10 @@ void loop() {
   if (abs(rudder_error) > ACCEPTABLE_RUDDER_ERROR) {
     if (((int)rudder_error % 360) > 0 && ((int)rudder_error % 360) < 180) {
       rudder_stepper_driver.setDirection(COUNTER_CLOCKWISE);
-      rudder_direction = COUNTER_CLOCKWISE;
     }
     
     else {
       rudder_stepper_driver.setDirection(CLOCKWISE);
-      rudder_direction = CLOCKWISE;
     }
 
     // number of steps is some linear function that maps the error of the rudder to a number of steps we want to take per loop.
@@ -200,25 +202,19 @@ void loop() {
     for (int i = 0; i < number_of_steps; i++) {
       rudder_stepper_driver.step();
       delayMicroseconds(STEP_PERIOD_US);
-
-      if (rudder_direction == CLOCKWISE) current_rudder_angle += STEP_SIZE_DEGREES;
-      if (rudder_direction == COUNTER_CLOCKWISE) current_rudder_angle -= STEP_SIZE_DEGREES;
     }
   }
 
 
   float mast_error = current_mast_angle - desired_mast_angle;
-  int rudder_direction;
 
   if (abs(mast_error) > ACCEPTABLE_MAST_ERROR) {
     if (((int)mast_error % 360) > 0 && ((int)mast_error % 360) < 180) {
       mast_stepper_driver.setDirection(COUNTER_CLOCKWISE);
-      rudder_direction = COUNTER_CLOCKWISE;
     }
     
     else {
       mast_stepper_driver.setDirection(CLOCKWISE);
-      rudder_direction = CLOCKWISE;
     }
 
     // number of steps is some linear function that maps the error of the rudder to a number of steps we want to take per loop.
@@ -227,9 +223,6 @@ void loop() {
     for (int i = 0; i < number_of_steps; i++) {
       mast_stepper_driver.step();
       delayMicroseconds(STEP_PERIOD_US);
-
-      if (rudder_direction == CLOCKWISE) current_rudder_angle += STEP_SIZE_DEGREES;
-      if (rudder_direction == COUNTER_CLOCKWISE) current_rudder_angle -= STEP_SIZE_DEGREES;
     }
   }
 }
