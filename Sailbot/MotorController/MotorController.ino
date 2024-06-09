@@ -4,33 +4,33 @@
 
 #define RUDDER_MOTOR_SLEEP_PIN 0
 #define RUDDER_MOTOR_CHIP_SELECT_PIN 1 
-#define MAST_MOTOR_SLEEP_PIN 7
-#define MAST_MOTOR_CHIP_SELECT_PIN 8
+#define WINCH_MOTOR_SLEEP_PIN 7
+#define WINCH_MOTOR_CHIP_SELECT_PIN 8
 
 #define RUDDER_ENCODER_CHIP_SELECT_PIN 19
-#define MAST_ENCODER_CHIP_SELECT_PIN 20
+#define WINCH_ENCODER_CHIP_SELECT_PIN 20
 
 #define CLOCKWISE 1
 #define COUNTER_CLOCKWISE 0
 
 #define MAX_RUDDER_CURRENT 2000
-#define MAX_MAST_CURRENT 2000
+#define MAX_WINCH_CURRENT 2000
 
 // This is measured in number of steps before you check the encoder and jetson serial values. Encoder and jetson serial have inherent delay. 
 // So the more steps you do before you check the encoder and jetson serial, the faster you go, but the harder it is to control
 // very similar to p controller gain (Kp)
 #define RUDDER_GAIN 300
-#define MAST_GAIN 150
+#define WINCH_GAIN 150
 
 // // This is because multiturn encoders don't allow us to zero them
-// #define MAST_MOTOR_ZERO_POINT (174.64 + 600)
+// #define WINCH_MOTOR_ZERO_POINT (174.64 + 600)
 #define WINCH_ZERO_POINT 200
 
 #define MAX_RUDDER_ANGLE 30
 #define MIN_RUDDER_ANGLE -30
 
-#define MAX_MAST_MOTOR_ANGLE 580
-#define MIN_MAST_MOTOR_ANGLE -600
+#define MAX_WINCH_MOTOR_ANGLE 580
+#define MIN_WINCH_MOTOR_ANGLE -600
 
 #define MAX_SAIL_ANGLE 90
 #define MIN_SAIL_ANGLE 0
@@ -38,13 +38,13 @@
 
 // #define INVERTED_CONTROLS true
 // #define RUDDER_ANGLE_OFFSET 36
-// #define mast_motor_angle_OFFSET 0
+// #define winch_motor_angle_OFFSET 0
 
 const float MID_RUDDER_ANGLE = (MAX_RUDDER_ANGLE + MIN_RUDDER_ANGLE) / 2;
-const float MID_MAST_MOTOR_ANGLE = (MAX_MAST_MOTOR_ANGLE + MIN_MAST_MOTOR_ANGLE) / 2;
+const float MID_WINCH_MOTOR_ANGLE = (MAX_WINCH_MOTOR_ANGLE + MIN_WINCH_MOTOR_ANGLE) / 2;
 
 const int MAX_RUDDER_ERROR = (MAX_RUDDER_ANGLE - MIN_RUDDER_ANGLE);
-const int MAX_MAST_ERROR = (MAX_MAST_MOTOR_ANGLE - MIN_RUDDER_ANGLE);
+const int MAX_WINCH_ERROR = (MAX_WINCH_MOTOR_ANGLE - MIN_RUDDER_ANGLE);
 const int MAX_SAIL_ERROR = (MAX_SAIL_ANGLE - MIN_SAIL_ANGLE);
 
 // const float STEP_SIZE_DEGREES = 0.13109978148; // (1.8/(13.73));
@@ -60,12 +60,12 @@ const int MAX_SAIL_ERROR = (MAX_SAIL_ANGLE - MIN_SAIL_ANGLE);
 #define STEP_PERIOD_US 2000
 
 HighPowerStepperDriver rudder_stepper_driver;
-HighPowerStepperDriver mast_stepper_driver;
+HighPowerStepperDriver winch_stepper_driver;
 AMT22_Encoder* rudder_encoder;
-AMT22_Encoder* mast_encoder;
+AMT22_Encoder* winch_encoder;
 
 float current_rudder_angle = 0; 
-float current_mast_motor_angle = 0;
+float current_winch_motor_angle = 0;
 
 float desired_sail_angle = 0; 
 float desired_rudder_angle = 0;
@@ -91,13 +91,13 @@ void setup() {
   Serial.begin(115200);
 
   digitalWrite(RUDDER_MOTOR_SLEEP_PIN, HIGH);    // Sleep pin is inverted so when we tie it high, we are telling it to be "awake"
-  digitalWrite(MAST_MOTOR_SLEEP_PIN, HIGH);    
+  digitalWrite(WINCH_MOTOR_SLEEP_PIN, HIGH);    
 
   rudder_encoder = new AMT22_Encoder(RUDDER_ENCODER_CHIP_SELECT_PIN);
-  mast_encoder = new AMT22_Encoder(MAST_ENCODER_CHIP_SELECT_PIN);
+  winch_encoder = new AMT22_Encoder(WINCH_ENCODER_CHIP_SELECT_PIN);
 
   init_stepper_motor_driver(rudder_stepper_driver, RUDDER_MOTOR_CHIP_SELECT_PIN, MAX_RUDDER_CURRENT, HPSDStepMode::MicroStep1);
-  init_stepper_motor_driver(mast_stepper_driver, MAST_MOTOR_CHIP_SELECT_PIN, MAX_MAST_CURRENT, HPSDStepMode::MicroStep4);
+  init_stepper_motor_driver(winch_stepper_driver, WINCH_MOTOR_CHIP_SELECT_PIN, MAX_WINCH_CURRENT, HPSDStepMode::MicroStep4);
 }
 
 
@@ -156,10 +156,10 @@ char *str_replace(char *orig, char *rep, char *with) {
 }
 
 
-float get_sail_angle_from_mast_motor_angle(float mast_motor_angle) {
-  // float mast_motor_range = MAX_MAST_MOTOR_ANGLE - MIN_MAST_MOTOR_ANGLE;
-  return (mast_motor_angle - WINCH_ZERO_POINT) * 0.08087;
-  // return ((mast_motor_angle - MIN_MAST_MOTOR_ANGLE) * 90) / mast_motor_range;
+// Based on winch-> sail polynomial Adam made
+float get_sail_angle_from_winch_motor_angle(float winch_motor_angle) {
+  
+  return (winch_motor_angle - WINCH_ZERO_POINT) * 0.08087;
 }
 
 // Main Control Loop --------------------------------------------------------------------------------------------------------------------------------------------
@@ -168,7 +168,7 @@ void loop() {
   size_t incoming_message_buffer_size = 1000;
   char incoming_message_buffer[incoming_message_buffer_size];
   
-  // Get desired mast and rudder angles from the jetson
+  // Get desired winch and rudder angles from the jetson
   if (Serial.available() > 0) {
     Serial.readBytesUntil('\n', incoming_message_buffer, incoming_message_buffer_size);
     clear_serial_buffer();
@@ -177,7 +177,7 @@ void loop() {
     char* message = incoming_message_buffer;
 
     char* sail_angle_message = strtok(message, ";");
-    sail_angle_message = str_replace(sail_angle_message, (char*)"mast angle: ", NULL);
+    sail_angle_message = str_replace(sail_angle_message, (char*)"sail angle: ", NULL);
     desired_sail_angle = atof(sail_angle_message);
     free(sail_angle_message);
 
@@ -194,26 +194,15 @@ void loop() {
 
   // Get Encoder Values (current positions of the motors)
   current_rudder_angle = rudder_encoder->get_motor_angle();
-  current_mast_motor_angle = mast_encoder->get_motor_angle();
-  // Serial.println(current_rudder_angle);
-
-  int mast_turn_count = mast_encoder->get_turn_count();
-  current_mast_motor_angle += mast_turn_count * 360;
-
-  // current_mast_motor_angle -= MAST_MOTOR_ZERO_POINT;
-  // Serial.println(current_mast_motor_angle);
-  float current_sail_angle = get_sail_angle_from_mast_motor_angle(current_mast_motor_angle);
-  // float current_sail_angle = current_mast_motor_angle;
-
-  // Serial.println(mast_turn_count);
-  // Serial.print("Sail angle: "); Serial.println(current_sail_angle);
-
   if (current_rudder_angle > 180) current_rudder_angle -= 360;
-  // if (current_mast_motor_angle > 180) current_mast_motor_angle -= 360;
 
-  // Serial.println(current_sail_angle);
-  // Serial.println();
-  // Serial.println(current_sail_angle);
+  current_winch_motor_angle = winch_encoder->get_motor_angle();
+  int winch_turn_count = winch_encoder->get_turn_count();
+  current_winch_motor_angle += winch_turn_count * 360;
+
+  float current_sail_angle = get_sail_angle_from_winch_motor_angle(current_winch_motor_angle);
+
+
   // Closed Feedback Loop
   float rudder_error = current_rudder_angle - desired_rudder_angle;
 
