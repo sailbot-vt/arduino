@@ -240,23 +240,23 @@ void loop() {
 
   if (abs(sail_error) > ACCEPTABLE_SAIL_ERROR) {
     if (sail_error > 0) {
-      mast_stepper_driver.setDirection(COUNTER_CLOCKWISE);
+      winch_stepper_driver.setDirection(COUNTER_CLOCKWISE);
     }
     
     else {
-      mast_stepper_driver.setDirection(CLOCKWISE);
+      winch_stepper_driver.setDirection(CLOCKWISE);
     }
 
     // number of steps is some linear function that maps the error of the rudder to a number of steps we want to take per loop.
     // This ends up cooresponding to the speed of the rudder. The higher the rudder_error, the higher the speed of the rudder will be
-    int number_of_steps = (int)(abs(sail_error) * MAST_GAIN / MAX_SAIL_ERROR);   
+    int number_of_steps = (int)(abs(sail_error) * WINCH_GAIN / MAX_SAIL_ERROR);   
     if (number_of_steps > 150) {
       Serial.println("Throttling Sail");
       number_of_steps = 150;
     }
 
     for (int i = 0; i < number_of_steps; i++) {
-      mast_stepper_driver.step();
+      winch_stepper_driver.step();
       delayMicroseconds(STEP_PERIOD_US);
     }
   }
